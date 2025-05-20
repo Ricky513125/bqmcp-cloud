@@ -13,6 +13,8 @@ import structlog
 from openai import AsyncOpenAI, OpenAI
 from mcp.server.fastmcp import FastMCP 
 import fitz
+from dotenv import load_dotenv
+load_dotenv()
 
 class BQMCPCloud:
     """BQMCP Cloud service for document processing and AI content generation"""
@@ -126,7 +128,6 @@ def get_openai_client(api_key: Optional[str] = None, proxy: Optional[str] = None
 # 为了向后兼容，保留全局变量和函数
 BASE_OUTPUT_PATH = "outputs"
 BASE_IMAGE_LOCAL_PATH = os.path.join(BASE_OUTPUT_PATH, "images")
-API_KEY = os.getenv("OPENAI_API_KEY", "REMOVEDUyXur0kLeCmVR7WiqnwdT3BlbkFJa5XXScNTgc0DVNS48qYE")
 
 # 为了向后兼容，保留全局函数
 ensure_output_dirs = lambda: os.makedirs(BASE_OUTPUT_PATH, exist_ok=True) and os.makedirs(BASE_IMAGE_LOCAL_PATH, exist_ok=True)
@@ -696,12 +697,10 @@ async def generate_pdf(user_content: Union[List, str]) -> dict:
         user_content: 输入描述的文本或markdown，生成PDF
     Returns:
         生成的PDF内容
-        """
+    """
     client = OpenAI(
-        # api_key=os.getenv("OPENAI_API_KEY"),
-        # http_client=httpx.Client(proxy=os.getenv("HTTP_PROXY")),
-        api_key=API_KEY,
-        http_client=httpx.Client(proxy="http://39.104.58.112:31701"),
+        api_key=os.getenv("OPENAI_API_KEY"),  # 使用环境变量
+        http_client=httpx.Client(proxy=os.getenv("HTTP_PROXY", "http://39.104.58.112:31701")),
     )
     messages = [{"role": "system", "content": "根据描述的文本或者markdown，执行生成任务。返回生成的PDF的内容"}]
     response = client.chat.completions.create(
