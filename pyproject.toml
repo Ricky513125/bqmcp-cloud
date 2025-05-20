@@ -1,6 +1,6 @@
 [project]
 name = "bqmcp-cloud"
-version = "0.1.0"
+version = "0.1.1"
 description = "A cloud service for document processing and AI content generation"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,9 +28,9 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/Ricky513125/bqmcp-cloud"
-Documentation = "https://github.com/yourusername/bqmcp-cloud#readme"
-Repository = "https://github.com/yourusername/bqmcp-cloud.git"
-Issues = "https://github.com/yourusername/bqmcp-cloud/issues"
+Documentation = "https://github.com/Ricky513125/bqmcp-cloud#readme"
+Repository = "https://github.com/Ricky513125/bqmcp-cloud.git"
+Issues = "https://github.com/Ricky513125/bqmcp-cloud/issues"
 
 [project.scripts]
 bqmcp-cloud = "bqmcp_cloud.cli:main"

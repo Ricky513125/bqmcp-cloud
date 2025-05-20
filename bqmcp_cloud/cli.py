@@ -1,63 +1,100 @@
 """Command line interface for BQMCP Cloud"""
 
 import argparse
+import asyncio
+import logging
 import os
 import sys
 from typing import Optional
 
-from .bqmcp_cloud import BQMCPCloud
+import structlog
+from bqmcp_cloud import BQMCPCloud
 
-def main(argv: Optional[list[str]] = None) -> int:
-    """Main entry point for the CLI"""
-    parser = argparse.ArgumentParser(description="BQMCP Cloud - Document processing and AI content generation service")
-    
-    parser.add_argument(
-        "--api-key",
-        help="OpenAI API key (default: OPENAI_API_KEY environment variable)",
-        default=os.getenv("OPENAI_API_KEY")
+def setup_logging(log_level: str = "INFO") -> None:
+    """设置日志配置"""
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper()),
+        format="%(message)s",
+        stream=sys.stderr  # 将日志输出到 stderr
     )
-    parser.add_argument(
-        "--proxy",
-        help="HTTP proxy URL (default: HTTP_PROXY environment variable)",
-        default=os.getenv("HTTP_PROXY")
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.stdlib.add_log_level,
+            structlog.processors.JSONRenderer()
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
     )
+
+def parse_args() -> argparse.Namespace:
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description="BQMCP Cloud Service")
     parser.add_argument(
-        "--output-dir",
-        help="Base output directory (default: 'outputs')",
-        default="outputs"
+        "--transport",
+        type=str,
+        default="stdio",
+        choices=["stdio", "http"],
+        help="Transport method (stdio or http)"
     )
     parser.add_argument(
         "--log-level",
-        help="Logging level (default: INFO)",
+        type=str,
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        default="INFO"
+        help="Logging level"
     )
     parser.add_argument(
         "--name",
-        help="MCP server name (default: 'bigquant')",
-        default="bigquant"
+        type=str,
+        default="bigquant",
+        help="Name for the MCP server"
     )
     parser.add_argument(
-        "--transport",
-        help="Transport type (default: 'stdio')",
-        choices=["stdio", "http"],
-        default="stdio"
+        "--api-key",
+        type=str,
+        help="OpenAI API key (optional, can also use OPENAI_API_KEY environment variable)"
     )
-    
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--proxy",
+        type=str,
+        help="HTTP proxy URL (optional, can also use HTTP_PROXY environment variable)"
+    )
+    return parser.parse_args()
+
+def main() -> int:
+    """主函数"""
+    args = parse_args()
+    setup_logging(args.log_level)
+    logger = structlog.get_logger(__name__)
     
     try:
-        cloud = BQMCPCloud(
-            api_key=args.api_key,
-            proxy=args.proxy,
-            base_output_path=args.output_dir,
+        # 获取 API key
+        api_key = args.api_key or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OpenAI API key not provided. Please set it via --api-key or OPENAI_API_KEY environment variable")
+            return 1
+            
+        # 获取代理设置
+        proxy = args.proxy or os.getenv("HTTP_PROXY")
+        
+        # 初始化服务
+        service = BQMCPCloud(
+            api_key=api_key,
+            proxy=proxy,
             log_level=args.log_level,
             mcp_name=args.name
         )
-        cloud.run(transport=args.transport)
+        
+        # 运行服务
+        logger.info("Starting BQMCP Cloud service", transport=args.transport)
+        service.run(transport=args.transport)
         return 0
+        
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("Service failed", error=str(e), exc_info=True)
         return 1
 
 if __name__ == "__main__":

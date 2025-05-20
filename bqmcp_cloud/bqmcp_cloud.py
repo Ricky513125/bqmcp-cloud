@@ -3,8 +3,9 @@ import base64
 import json
 import os
 import re
+import sys
 from datetime import datetime
-from typing import Any, List, Dict, Union, Optional
+from typing import Any, List, Dict, Union, Optional, Callable, Awaitable
 
 import aiofiles
 import httpx
@@ -59,6 +60,112 @@ class BQMCPCloud:
         
         # Register tools
         self._register_tools()
+        
+        # Initialize message handlers
+        self._init_message_handlers()
+    
+    def _init_message_handlers(self):
+        """Initialize message handlers for MCP protocol"""
+        self.message_handlers = {
+            "tool_call": self._handle_tool_call,
+            "ping": self._handle_ping,
+            "error": self._handle_error
+        }
+    
+    async def _handle_tool_call(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle tool call messages"""
+        try:
+            tool_name = message.get("name")
+            tool_args = message.get("arguments", {})
+            
+            if not hasattr(self, tool_name):
+                return {
+                    "type": "error",
+                    "error": f"Tool {tool_name} not found"
+                }
+            
+            tool_func = getattr(self, tool_name)
+            result = await tool_func(**tool_args)
+            
+            return {
+                "type": "tool_result",
+                "name": tool_name,
+                "result": result
+            }
+        except Exception as e:
+            self.logger.error(f"Error handling tool call: {e}", exc_info=True)
+            return {
+                "type": "error",
+                "error": str(e)
+            }
+    
+    async def _handle_ping(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle ping messages"""
+        return {
+            "type": "pong",
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    async def _handle_error(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle error messages"""
+        self.logger.error(f"Received error message: {message}")
+        return {
+            "type": "error_ack",
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    async def _process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Process incoming messages"""
+        msg_type = message.get("type")
+        if msg_type not in self.message_handlers:
+            return {
+                "type": "error",
+                "error": f"Unknown message type: {msg_type}"
+            }
+        
+        handler = self.message_handlers[msg_type]
+        return await handler(message)
+    
+    async def _read_message(self) -> Optional[Dict[str, Any]]:
+        """Read a message from stdin"""
+        try:
+            line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
+            if not line:
+                return None
+            return json.loads(line)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Error decoding message: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error reading message: {e}")
+            return None
+    
+    async def _write_message(self, message: Dict[str, Any]):
+        """Write a message to stdout"""
+        try:
+            json_str = json.dumps(message)
+            sys.stdout.write(json_str + "\n")
+            sys.stdout.flush()
+        except Exception as e:
+            self.logger.error(f"Error writing message: {e}")
+    
+    async def run_async(self):
+        """Run the MCP server asynchronously"""
+        self.logger.info("Starting BQMCP Cloud server")
+        while True:
+            message = await self._read_message()
+            if message is None:
+                break
+            
+            response = await self._process_message(message)
+            await self._write_message(response)
+    
+    def run(self, transport: str = 'stdio'):
+        """Run the MCP server"""
+        if transport == 'stdio':
+            asyncio.run(self.run_async())
+        else:
+            self.mcp.run(transport=transport)
     
     def _ensure_output_dirs(self):
         """Create output directories if they don't exist"""
@@ -111,9 +218,462 @@ class BQMCPCloud:
         """Check the current API key configuration"""
         return self.api_key
     
-    def run(self, transport: str = 'stdio'):
-        """Run the MCP server"""
-        self.mcp.run(transport=transport)
+    @mcp.tool()
+    async def generate_ppt(self, user_content: Union[List, str]) -> dict:
+        """
+        Name:
+            PPT生成
+        Description:
+            根据描述的文本或者markdown，执行生成任务。返回生成的PPT的内容
+        Args:
+            user_content: 输入描述的文本或markdown，生成PPT 
+        Returns:
+            生成的PPT内容
+        """
+        # 初始化 OpenAI 客户端
+        openai_client = self.get_openai_client()
+        
+        # 如果输入是字符串，转换为适当格式
+        if isinstance(user_content, str):
+            # 如果有必要，进行处理，例如将纯文本转换为合适的格式
+            processed_content = [{"type": "text", "text": user_content}]
+        else:
+            processed_content = user_content
+        
+        # 使用PPT系统提示生成PPT
+        paper_ppt_content = await self._call_chatgpt(
+            processed_content, 
+            self.prompts["PPT_SYSTEM_PROMPT"], 
+            openai_client
+        )
+
+        return {"ppt_content": paper_ppt_content}
+
+    @mcp.tool()
+    async def generate_title(self, user_content: Union[List, str]) -> dict:
+        """
+        Name:
+            生成研报标题
+        Description:
+            根据描述的文本或者markdown，执行生成任务。返回生成的标题的字符串
+        Args:
+            user_content: 输入描述的文本或markdown，生成文本的标题
+        Returns:
+            生成的标题
+        """
+        # 初始化 OpenAI 客户端
+        openai_client = self.get_openai_client()
+        
+        # 如果输入是字符串，转换为适当格式
+        if isinstance(user_content, str):
+            processed_content = [{"type": "text", "text": user_content}]
+        else:
+            processed_content = user_content
+        
+        # 使用系统提示生成标题
+        result = await self._call_chatgpt(
+            processed_content, 
+            self.prompts["DOC_SYSTEM_PROMPT"], 
+            openai_client,
+            pattern_tags=["paper_title"]
+        )
+        
+        return {"title": result.get("paper_title", "")}
+
+    @mcp.tool()
+    async def generate_abstract(self, user_content: Union[List, str]) -> dict:
+        """
+        Name:
+            研报或论文的摘要生成
+        Description:
+            根据描述的文本或者markdown，执行生成任务。返回生成的摘要
+        Args:
+            user_content: 输入描述的文本或markdown，生成摘要
+        Returns:
+            生成的摘要
+        """
+        # 初始化 OpenAI 客户端
+        openai_client = self.get_openai_client()
+        
+        # 如果输入是字符串，转换为适当格式
+        if isinstance(user_content, str):
+            processed_content = [{"type": "text", "text": user_content}]
+        else:
+            processed_content = user_content
+        
+        # 使用系统提示生成摘要
+        result = await self._call_chatgpt(
+            processed_content, 
+            self.prompts["DOC_SYSTEM_PROMPT"], 
+            openai_client,
+            pattern_tags=["paper_abstract"]
+        )
+        
+        return {"abstract": result.get("paper_abstract", "")}
+
+    @mcp.tool()
+    async def generate_quick_read(self, user_content: Union[List, str]) -> dict:
+        """
+        Name:
+            速读内容生成
+        Description:
+            根据描述的文本或者markdown，执行生成任务。返回生成的速读内容
+        Args:
+            user_content: 输入描述的文本或markdown，生成速读内容
+        Returns:
+            生成的速读内容
+        """
+        # 初始化 OpenAI 客户端
+        openai_client = self.get_openai_client()
+        
+        # 如果输入是字符串，转换为适当格式
+        if isinstance(user_content, str):
+            processed_content = [{"type": "text", "text": user_content}]
+        else:
+            processed_content = user_content
+        
+        # 使用系统提示生成速读内容
+        result = await self._call_chatgpt(
+            processed_content, 
+            self.prompts["DOC_SYSTEM_PROMPT"], 
+            openai_client,
+            pattern_tags=["quick_read"]
+        )
+        
+        return {"quick_read": result.get("quick_read", "")}
+
+    @mcp.tool()
+    async def generate_mind_map(self, user_content: Union[List, str]) -> dict:
+        """
+        Name:
+            思维导图生成
+        Description:
+            根据描述的文本或者markdown，执行生成任务。返回生成的思维导图
+        Args:
+            user_content: 输入描述的文本或markdown，生成思维导图
+        Returns:
+            生成的思维导图内容
+        """
+        # 初始化 OpenAI 客户端
+        openai_client = self.get_openai_client()
+        
+        # 如果输入是字符串，转换为适当格式
+        if isinstance(user_content, str):
+            processed_content = [{"type": "text", "text": user_content}]
+        else:
+            processed_content = user_content
+        
+        # 使用系统提示生成思维导图内容
+        result = await self._call_chatgpt(
+            processed_content, 
+            self.prompts["DOC_SYSTEM_PROMPT"], 
+            openai_client,
+            pattern_tags=["mind_map"]
+        )
+        
+        return {"mind_map": result.get("mind_map", "")}
+
+    @mcp.tool()
+    async def generate_deep_read(self, user_content: Union[List, str]) -> dict:
+        """
+        Name:
+            深度阅读内容生成
+        Description:
+            根据描述的文本或者markdown，执行生成任务。返回生成的深度阅读内容
+        Args:
+            user_content: 输入描述的文本或markdown，生成深度阅读内容
+        Returns:
+            生成的深度阅读内容
+        """
+        # 初始化 OpenAI 客户端
+        openai_client = self.get_openai_client()
+        
+        # 如果输入是字符串，转换为适当格式
+        if isinstance(user_content, str):
+            processed_content = [{"type": "text", "text": user_content}]
+        else:
+            processed_content = user_content
+        
+        # 使用系统提示生成深度阅读内容
+        deep_read_content = await self._call_chatgpt(
+            processed_content, 
+            self.prompts["DEEP_READ_SYSTEM_PROMPT"], 
+            openai_client
+        )
+        
+        return {"deep_read": deep_read_content}
+
+    @mcp.tool()
+    async def extract_release_date(self, content: Union[List, str]) -> dict:
+        """
+        Name:
+            提取发布日期
+        Description:
+            从文本内容中提取研报或论文的发布日期
+        Args:
+            content: 输入文本内容
+        Returns:
+            提取的发布日期
+        """
+        # 初始化 OpenAI 客户端
+        openai_client = self.get_openai_client()
+        
+        # 处理输入内容
+        if isinstance(content, list):
+            content = self._extract_json_to_str(content)
+        
+        # 使用系统提示提取发布日期
+        result = await self._call_chatgpt(
+            content, 
+            self.prompts["RELEASE_DATE_SYSTEM_PROMPT"], 
+            openai_client,
+            pattern_tags=["release_date"]
+        )
+        
+        release_date = result.get("release_date", "")
+        normalized_date = self._normalize_datetime_string(release_date)
+        
+        return {"release_date": normalized_date or release_date}
+
+    @mcp.tool()
+    async def generate_pdf(self, user_content: Union[List, str]) -> dict:
+        """
+        Name:
+            生成PDF
+        Description:
+            根据描述的文本或者markdown，执行生成任务。返回生成的PDF的内容
+        Args:
+            user_content: 输入描述的文本或markdown，生成PDF
+        Returns:
+            生成的PDF内容
+        """
+        client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),  # 使用环境变量
+            http_client=httpx.Client(proxy=os.getenv("HTTP_PROXY", "http://39.104.58.112:31701")),
+        )
+        messages = [{"role": "system", "content": "根据描述的文本或者markdown，执行生成任务。返回生成的PDF的内容"}]
+        response = client.chat.completions.create(
+            model="gpt-4.1-nano",
+            messages=messages,
+            stream=False,
+        )
+        return response.choices[0].message.content
+    
+    async def _call_chatgpt(
+        self,
+        user_content: Union[List, str],
+        system_prompt: str,
+        openai_client: AsyncOpenAI,
+        pattern_tags: Optional[List[str]] = None,
+        model: str = "gpt-4.1",
+    ) -> Union[Dict, str]:
+        """访问 openai chatgpt"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
+                response = await openai_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    stream=False,
+                )
+                break
+            except Exception as e:
+                self.logger.error(f"Request failed on attempt {attempt + 1}/{max_retries}: {e}")
+                if attempt == max_retries - 1:
+                    raise
+        response = response.choices[0].message.content
+        result = {}
+        if pattern_tags:
+            for tag in pattern_tags:
+                content = ""
+                pattern = re.compile(rf"<{tag}>(.*?)</{tag}>", re.DOTALL)
+                match = pattern.search(response)
+                if match:
+                    content = match.group(1)
+                result[tag] = content
+        return result or response
+
+    def _extract_json_to_str(self, obj):
+        """将json转化为纯字符串格式"""
+        if isinstance(obj, str):
+            return obj
+        elif isinstance(obj, dict):
+            return " ".join(self._extract_json_to_str(v) for v in obj.values())
+        elif isinstance(obj, list):
+            return " ".join(self._extract_json_to_str(i) for i in obj)
+        return ""
+
+    def _normalize_datetime_string(self, dt_str: str) -> Optional[str]:
+        """时间处理函数，防止大模型抽取出错导致报错"""
+        if not dt_str or not isinstance(dt_str, str) or dt_str.strip() == "":
+            return None
+
+        dt_str = dt_str.strip()
+
+        # 可接受的格式以及补全后的标准格式
+        formats = [
+            ("%Y", "%Y-01-01 00:00:00.000000"),
+            ("%Y-%m", "%Y-%m-01 00:00:00.000000"),
+            ("%Y-%m-%d", "%Y-%m-%d 00:00:00.000000"),
+            ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:00.000000"),
+            ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.000000"),
+            ("%Y-%m-%d %H:%M:%S.%f", None),
+        ]
+
+        for fmt, fill_template in formats:
+            try:
+                dt = datetime.strptime(dt_str, fmt)
+                if fill_template:
+                    filled_str = dt.strftime(fill_template)
+                    filled_dt = datetime.strptime(filled_str, "%Y-%m-%d %H:%M:%S.%f")
+                    return filled_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                return dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+            except ValueError:
+                continue
+
+        return None
+
+    def markdown_to_openai_message(self, md_content: str, output_dir: str, pdf_name: str):
+        """将 Markdown 文本（可能包含单个图片链接）转换为 OpenAI 消息格式。
+        如果找到图片，使用基础 URL 构建完整的图片 URL。
+        如果未找到图片，则生成纯文本消息。
+
+        Args: 
+            md_content: Markdown content 
+            output_dir: Directory where outputs are stored 
+            pdf_name: Name of the PDF file(without extension)
+
+        Returns:
+            List of content parts for OpenAI API 
+        """
+        content_parts = []
+        last_index = 0
+        image_pattern = re.compile(r"!\[.*?\]\((.*?)\)")
+        matches = list(image_pattern.finditer(md_content))
+
+        if not matches:
+            full_text = md_content.strip()
+            if full_text:
+                content_parts.append({"type": "text", "text": full_text})
+        else:
+            for match in matches:
+                start_index = match.start()
+                text_segment = md_content[last_index:start_index].strip()
+                if text_segment:
+                    content_parts.append({"type": "text", "text": text_segment})
+
+                relative_image_path = match.group(1)
+                if relative_image_path:
+                    # Use local image path 
+                    image_path = os.path.join(output_dir, "images", relative_image_path)
+                    if os.path.exists(image_path):
+                        with open(image_path, "rb") as image_file:
+                            image_data = base64.b64encode(image_file.read()).decode("utf-8")
+                        content_parts.append({
+                            "type": "text", "text": f"image_path: {relative_image_path}"
+                        })
+                        content_parts.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}})
+                
+                last_index = match.end()
+                
+            remaining_text = md_content[last_index:].strip()
+            if remaining_text:
+                content_parts.append({"type": "text", "text": remaining_text})
+        return content_parts
+
+    def _add_content_item_fully_merged(self, content_list: list, new_item: dict):
+        """Adds an item to the content list. Merges the new item if both it
+        and the last item are of type 'text'.
+        """
+        if new_item["type"] == "text" and not new_item.get("text", "").strip():
+            return
+
+        can_merge = (
+            content_list  # 列表不为空
+            and content_list[-1]["type"] == "text"  # 最后一项是文本
+            and new_item["type"] == "text"  # 新项也是文本
+        )
+
+        if can_merge:
+            content_list[-1]["text"] += "\n\n" + new_item["text"]
+        else:
+            content_list.append(new_item)
+
+    def content_to_openai_message(self, content_list: list, file_id: str) -> list:
+        """将 mineru 识别的 content list 转换为 OpenAI 消息格式。"""
+        openai_content_list = []
+        current_page_idx = -1
+
+        for item in content_list:
+            page_idx = item.get("page_idx", -1)
+
+            if page_idx != current_page_idx:
+                if current_page_idx != -1:
+                    self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": f"[page_idx:{current_page_idx}:end]"})
+                self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": f"[page_idx:{page_idx}:begin]"})
+                current_page_idx = page_idx
+
+            item_type = item.get("type")
+
+            if item_type == "text":
+                text = item.get("text", "")
+                text_level = item.get("text_level", 0)
+                formatted_text = f"{'#' * text_level} {text}" if text_level > 0 else text
+                if formatted_text:
+                    self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": formatted_text})
+
+            elif item_type == "equation":
+                self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": item.get("text", "")})
+
+            elif item_type == "image":
+                img_path = item.get("img_path", "")
+
+                img_caption = item.get("img_caption", [])
+                if img_caption:
+                    caption_text = "\n".join(img_caption)
+                    self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": caption_text})
+
+                if img_path:
+                    # Using BASE_IMAGE_LOCAL_PATH variable directly
+                    image_local_path = f"{self.base_image_local_path}/{file_id[:2]}/{file_id}/{img_path}"
+                    text_image_path = f"{img_path}?page={page_idx}"
+                    self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": f"image_path: {text_image_path}"})
+                    try:
+                        with open(image_local_path, "rb") as image_file:
+                            image_data = base64.b64encode(image_file.read()).decode("utf-8")
+                        self._add_content_item_fully_merged(openai_content_list, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}})
+                    except FileNotFoundError:
+                        self.logger.error(f"Could not find image file: {image_local_path}")
+
+                img_footnote = item.get("img_footnote", [])
+                if img_footnote:
+                    footnote_text = "\n".join(img_footnote)
+                    if footnote_text:
+                        self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": footnote_text})
+
+            elif item_type == "table":
+                table_body = item.get("table_body", "")
+
+                table_caption = item.get("table_caption", [])
+                if table_caption:
+                    caption_text = "\n".join(table_caption)
+                    self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": caption_text})
+
+                if table_body:
+                    stripped_body = table_body.strip()
+                    if stripped_body:
+                        self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": stripped_body})
+
+                table_footnote = item.get("table_footnote", [])
+                if table_footnote:
+                    footnote_text = "\n".join(table_footnote)
+                    self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": footnote_text})
+
+        if current_page_idx != -1:
+            self._add_content_item_fully_merged(openai_content_list, {"type": "text", "text": f"[page_idx:{current_page_idx}:end]"})
+
+        return openai_content_list
 
 # 为了向后兼容，保留全局函数
 def get_openai_client(api_key: Optional[str] = None, proxy: Optional[str] = None) -> AsyncOpenAI:
