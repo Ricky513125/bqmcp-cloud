@@ -1,11 +1,11 @@
-"""BQMCP Cloud Service - Main entry point
+"""Main entry point for the BQMCP Cloud service.
 
-This module provides the main entry point for running the BQMCP Cloud service
-as a Python module using `python -m bqmcp_cloud`.
+This module allows running the service as a Python module:
+    python -m bqmcp_cloud [options]
 """
 
 import sys
 from .cli import main
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
