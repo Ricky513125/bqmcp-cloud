@@ -2,11 +2,18 @@
 BQMCP Cloud - A cloud service for document processing and AI content generation
 
 This package provides a cloud service for document processing and AI content generation,
-built on top of FastMCP. It supports PDF processing, content extraction, and various
-AI-powered content generation features.
+built on top of MCP Server. It supports various AI-powered content generation features
+including PPT generation, title generation, abstract generation, and more.
 """
 
-from .bqmcp_cloud import BQMCPCloud, FastMCP
+from .bqmcp_cloud import (
+    BQMCPCloud,
+    BQTools,
+    ContentInput,
+    KeyCheckResult,
+    GenerationResult,
+    ReleaseDateResult,
+)
 
 def main():
     import argparse
@@ -32,4 +39,12 @@ if __name__ == "__main__":
 __version__ = "0.1.0"
 __author__ = "Ricky Li"
 __email__ = "lingyuli513125@gmail.com"
-__all__ = ["BQMCPCloud", "FastMCP"]
+
+__all__ = [
+    "BQMCPCloud",
+    "BQTools",
+    "ContentInput",
+    "KeyCheckResult",
+    "GenerationResult",
+    "ReleaseDateResult",
+]

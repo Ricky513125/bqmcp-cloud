@@ -36,12 +36,6 @@ def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="BQMCP Cloud service")
     parser.add_argument(
-        "--transport",
-        choices=["stdio", "http"],
-        default="stdio",
-        help="Transport method (default: stdio)"
-    )
-    parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         default="INFO",
@@ -62,8 +56,8 @@ def parse_args():
     )
     return parser.parse_args()
 
-def main():
-    """Main entry point for the CLI"""
+async def async_main():
+    """Async main entry point for the CLI"""
     args = parse_args()
     setup_logging(args.log_level)
     logger = structlog.get_logger(__name__)
@@ -79,17 +73,17 @@ def main():
         
         # Start service
         logger.info("Starting BQMCP Cloud service", 
-                   transport=args.transport,
                    name=args.name)
         
-        if args.transport == "stdio":
-            asyncio.run(service.run(transport="stdio"))
-        else:
-            service.run(transport=args.transport)
+        await service.serve()
             
     except Exception as e:
         logger.error("Failed to start service", error=str(e), exc_info=True)
         sys.exit(1)
+
+def main():
+    """Main entry point for the CLI"""
+    asyncio.run(async_main())
 
 if __name__ == "__main__":
     main() 
