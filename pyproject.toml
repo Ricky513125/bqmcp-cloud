@@ -1,7 +1,7 @@
 [project]
 name = "bqmcp-cloud"
-version = "0.1.2"
-description = "A cloud service for document processing and AI content generation"
+version = "0.1.5"
+description = "A cloud service for document processing and AI content generation, built on top of FastMCP"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -24,6 +24,8 @@ dependencies = [
     "openai>=1.79.0",
     "pymupdf>=1.25.5",
     "structlog>=25.3.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0"
 ]
 
 [project.urls]
@@ -33,7 +35,7 @@ Repository = "https://github.com/Ricky513125/bqmcp-cloud.git"
 Issues = "https://github.com/Ricky513125/bqmcp-cloud/issues"
 
 [project.scripts]
-bqmcp-cloud = "bqmcp_cloud.cli:main"
+bqmcp-cloud = "bqmcp_cloud:main"
 
 [build-system]
 requires = ["hatchling"]

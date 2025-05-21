@@ -125,29 +125,162 @@ class BQMCPCloud:
     def _register_tools(self):
         """Register all MCP tools"""
         # Register all the tool methods
-        self.tool()(self.check_key)
-        self.tool()(self.generate_ppt)
-        self.tool()(self.generate_title)
-        self.tool()(self.generate_abstract)
-        self.tool()(self.generate_quick_read)
-        self.tool()(self.generate_mind_map)
-        self.tool()(self.generate_deep_read)
-        self.tool()(self.extract_release_date)
-        self.tool()(self.generate_pdf)
+        self.tool(
+            name="check_key",
+            description="检查 OpenAI API Key 是否有效",
+            parameters={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        )(self.check_key)
+        self.tool(
+            name="generate_ppt",
+            description="根据输入内容生成 PPT 内容",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于生成 PPT"
+                    }
+                },
+                "required": ["content"]
+            }
+        )(self.generate_ppt)
+        self.tool(
+            name="generate_title",
+            description="根据输入内容生成标题",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "user_content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于生成标题"
+                    }
+                },
+                "required": ["user_content"]
+            }
+        )(self.generate_title)
+        self.tool(
+            name="generate_abstract",
+            description="根据输入内容生成摘要",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "user_content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于生成摘要"
+                    }
+                },
+                "required": ["user_content"]
+            }
+        )(self.generate_abstract)
+        self.tool(
+            name="generate_quick_read",
+            description="根据输入内容生成快速阅读内容",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "user_content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于生成快速阅读内容"
+                    }
+                },
+                "required": ["user_content"]
+            }
+        )(self.generate_quick_read)
+        self.tool(
+            name="generate_mind_map",
+            description="根据输入内容生成思维导图",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "user_content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于生成思维导图"
+                    }
+                },
+                "required": ["user_content"]
+            }
+        )(self.generate_mind_map)
+        self.tool(
+            name="generate_deep_read",
+            description="根据输入内容生成深度阅读内容",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "user_content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于生成深度阅读内容"
+                    }
+                },
+                "required": ["user_content"]
+            }
+        )(self.generate_deep_read)
+        self.tool(
+            name="extract_release_date",
+            description="从输入内容中提取发布日期",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于提取发布日期"
+                    }
+                },
+                "required": ["content"]
+            }
+        )(self.extract_release_date)
+        self.tool(
+            name="generate_pdf",
+            description="根据输入内容生成 PDF",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "user_content": {
+                        "type": ["string", "array"],
+                        "description": "输入文本或 markdown 内容，用于生成 PDF"
+                    }
+                },
+                "required": ["user_content"]
+            }
+        )(self.generate_pdf)
     
-    @Server.tool()
+    @Server.tool(
+        name="check_key",
+        description="检查 OpenAI API Key 是否有效",
+        parameters={
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    )
     async def check_key(self) -> KeyCheckResult:
         """
-        Name: Check API Key
-        Description: Check if the current API key is valid
-        Returns: API key status
+        检查当前 API key 是否有效
+        Returns:
+            KeyCheckResult: 包含 API key 状态和部分 key 信息
         """
         return KeyCheckResult(
             status="valid",
             key=self.api_key[:8] + "..."
         )
     
-    @Server.tool()
+    @Server.tool(
+        name="generate_ppt",
+        description="根据输入内容生成 PPT 内容",
+        parameters={
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于生成 PPT"
+                }
+            },
+            "required": ["content"]
+        }
+    )
     async def generate_ppt(self, content: Union[str, List[Dict[str, Any]]]) -> GenerationResult:
         """
         Name: Generate PPT
@@ -171,7 +304,20 @@ class BQMCPCloud:
 
         return GenerationResult(content=ppt_content)
 
-    @Server.tool()
+    @Server.tool(
+        name="generate_title",
+        description="根据输入内容生成标题",
+        parameters={
+            "type": "object",
+            "properties": {
+                "user_content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于生成标题"
+                }
+            },
+            "required": ["user_content"]
+        }
+    )
     async def generate_title(self, user_content: Union[List, str]) -> dict:
         """
         Name: Generate Title
@@ -196,7 +342,20 @@ class BQMCPCloud:
         
         return {"title": result.get("paper_title", "")}
 
-    @Server.tool()
+    @Server.tool(
+        name="generate_abstract",
+        description="根据输入内容生成摘要",
+        parameters={
+            "type": "object",
+            "properties": {
+                "user_content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于生成摘要"
+                }
+            },
+            "required": ["user_content"]
+        }
+    )
     async def generate_abstract(self, user_content: Union[List, str]) -> dict:
         """
         Name: Generate Abstract
@@ -221,7 +380,20 @@ class BQMCPCloud:
         
         return {"abstract": result.get("paper_abstract", "")}
 
-    @Server.tool()
+    @Server.tool(
+        name="generate_quick_read",
+        description="根据输入内容生成快速阅读内容",
+        parameters={
+            "type": "object",
+            "properties": {
+                "user_content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于生成快速阅读内容"
+                }
+            },
+            "required": ["user_content"]
+        }
+    )
     async def generate_quick_read(self, user_content: Union[List, str]) -> dict:
         """
         Name: Generate Quick Read
@@ -246,7 +418,20 @@ class BQMCPCloud:
         
         return {"quick_read": result.get("quick_read", "")}
 
-    @Server.tool()
+    @Server.tool(
+        name="generate_mind_map",
+        description="根据输入内容生成思维导图",
+        parameters={
+            "type": "object",
+            "properties": {
+                "user_content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于生成思维导图"
+                }
+            },
+            "required": ["user_content"]
+        }
+    )
     async def generate_mind_map(self, user_content: Union[List, str]) -> dict:
         """
         Name: Generate Mind Map
@@ -271,7 +456,20 @@ class BQMCPCloud:
         
         return {"mind_map": result.get("mind_map", "")}
 
-    @Server.tool()
+    @Server.tool(
+        name="generate_deep_read",
+        description="根据输入内容生成深度阅读内容",
+        parameters={
+            "type": "object",
+            "properties": {
+                "user_content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于生成深度阅读内容"
+                }
+            },
+            "required": ["user_content"]
+        }
+    )
     async def generate_deep_read(self, user_content: Union[List, str]) -> dict:
         """
         Name: Generate Deep Read
@@ -295,7 +493,20 @@ class BQMCPCloud:
         
         return {"deep_read": deep_read_content}
 
-    @Server.tool()
+    @Server.tool(
+        name="extract_release_date",
+        description="从输入内容中提取发布日期",
+        parameters={
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于提取发布日期"
+                }
+            },
+            "required": ["content"]
+        }
+    )
     async def extract_release_date(self, content: Union[List, str]) -> dict:
         """
         Name: Extract Release Date
@@ -321,7 +532,20 @@ class BQMCPCloud:
         
         return {"release_date": normalized_date or release_date}
 
-    @Server.tool()
+    @Server.tool(
+        name="generate_pdf",
+        description="根据输入内容生成 PDF",
+        parameters={
+            "type": "object",
+            "properties": {
+                "user_content": {
+                    "type": ["string", "array"],
+                    "description": "输入文本或 markdown 内容，用于生成 PDF"
+                }
+            },
+            "required": ["user_content"]
+        }
+    )
     async def generate_pdf(self, user_content: Union[List, str]) -> dict:
         """
         Name: Generate PDF
